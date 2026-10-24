@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+
+
+    <style name="Theme.ChessMaster" parent="Theme.AppCompat.DayNight.NoActionBar">
+
+        <!-- ChessMaster brand colors -->
+        <item name="colorPrimary">@color/chess_navy</item>
+        <item name="colorPrimaryDark">@color/chess_background</item>
+        <item name="colorAccent">@color/chess_gold</item>
+
+        <!-- Main window -->
+        <item name="android:windowBackground">@color/chess_background</item>
+        <item name="android:statusBarColor">@color/chess_background</item>
+        <item name="android:navigationBarColor">@color/chess_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+
+        <!-- Text selection -->
+        <item name="android:textColorHighlight">@color/chess_gold</item>
+
+        <!-- Default font and controls -->
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorControlActivated">@color/chess_gold</item>
+        <item name="android:colorControlHighlight">@color/chess_gold</item>
+
+    </style>
+
+
+</resources>

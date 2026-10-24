@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Main application theme -->
+    <color name="chess_navy">#172554</color>
+    <color name="chess_background">#0F172A</color>
+    <color name="chess_surface">#1E293B</color>
+    <color name="chess_gold">#F59E0B</color>
+
+    <!-- Chessboard -->
+    <color name="chess_light_square">#F0D9B5</color>
+    <color name="chess_dark_square">#B58863</color>
+
+    <!-- Chess pieces -->
+    <color name="chess_white_piece">#FFFEF2</color>
+    <color name="chess_black_piece">#171717</color>
+
+    <!-- Move indicators -->
+    <color name="chess_selected_square">#FACC15</color>
+    <color name="chess_legal_move">#166534</color>
+    <color name="chess_last_move">#A3B763</color>
+
+    <!-- Text -->
+    <color name="chess_text_primary">#F8FAFC</color>
+    <color name="chess_text_secondary">#CBD5E1</color>
+
+    <!-- Game status -->
+    <color name="chess_check">#DC2626</color>
+    <color name="chess_success">#22C55E</color>
+
+    <!-- Buttons -->
+    <color name="chess_button_undo">#334155</color>
+    <color name="chess_button_new_game">#F59E0B</color>
+
+</resources>
+
