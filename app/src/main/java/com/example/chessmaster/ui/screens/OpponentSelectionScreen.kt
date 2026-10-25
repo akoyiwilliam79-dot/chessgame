@@ -19,8 +19,8 @@ import androidx.compose.ui.unit.sp
 fun OpponentSelectionScreen(
     selectedOpponent: Int,
     onOpponentSelected: (Int) -> Unit,
-    onBack: () -> Unit,
-    onStartMatch: () -> Unit
+    onStartMatch: () -> Unit,
+    onBack: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -32,6 +32,7 @@ fun OpponentSelectionScreen(
                 vertical = 22.dp
             )
     ) {
+
         BrandHeader()
 
         Spacer(Modifier.height(28.dp))
@@ -68,13 +69,15 @@ fun OpponentSelectionScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        // Start the match using the selected opponent.
         PrimaryButton(
             text = "START MATCH  ♟",
-            onClick = onStart
+            onClick = onStartMatch
         )
 
         Spacer(Modifier.height(10.dp))
 
+        // Return to the game mode screen.
         OutlineButton(
             text = "←  BACK TO GAME MODES",
             onClick = onBack

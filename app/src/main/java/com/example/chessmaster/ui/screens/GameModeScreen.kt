@@ -99,12 +99,11 @@ fun GameModeScreen(
         Spacer(Modifier.height(25.dp))
 
         PrimaryButton(
-            text = if (selectedMode == GameMode.COMPUTER) {
+            if (selectedMode == GameMode.COMPUTER) {
                 "CHOOSE OPPONENT  →"
             } else {
                 "CONTINUE  →"
-            },
-            onClick = onContinue
+            }, onContinue
         )
 
         Spacer(Modifier.height(14.dp))

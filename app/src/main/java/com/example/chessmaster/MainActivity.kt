@@ -108,36 +108,27 @@ fun ChessMasterNavigation() {
             AppScreen.GAME_MODE -> {
                 GameModeScreen(
                     selectedMode = selectedMode,
-
                     onModeSelected = { mode ->
-
                         selectedMode = mode
-
-                        when (mode) {
-
-                            GameMode.PLAYER_VS_COMPUTER -> {
-                                currentScreen =
-                                    AppScreen.OPPONENT_SELECTION
-                            }
-
-                            GameMode.PLAYER_VS_PLAYER -> {
+                    },
+                    onBack = {
+                        currentScreen = AppScreen.WELCOME
+                    },
+                    onContinue = {
+                        when (selectedMode) {
+                            GameMode.PLAYER_VS_PLAYER, GameMode.LOCAL -> {
                                 launchChessGame(
                                     context = context,
-                                    mode = GameMode.PLAYER_VS_PLAYER,
+                                    mode = selectedMode,
                                     opponentIndex = selectedOpponent
                                 )
                             }
-
                             else -> {
-                                currentScreen =
-                                    AppScreen.OPPONENT_SELECTION
+                                currentScreen = AppScreen.OPPONENT_SELECTION
                             }
                         }
-                    },
-
-                    ) {
-                    currentScreen = AppScreen.WELCOME
-                }
+                    }
+                )
             }
 
             // FOURTH SCREEN: Computer opponent selection
