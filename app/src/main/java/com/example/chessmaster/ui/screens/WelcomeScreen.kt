@@ -137,12 +137,13 @@ fun WelcomeScreen(
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.padding(top = 12.dp)
+                .height(8.dp))
 
             Text(
                 text = "BUILT FOR THINKERS",
                 color = Muted,
-                fontSize = 9.sp,
+                fontSize = 15.sp,
                 letterSpacing = 2.sp
             )
         }

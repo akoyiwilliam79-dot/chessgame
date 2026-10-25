@@ -28,6 +28,7 @@ fun GameModeScreen(
 ) {
     Column(
         modifier = Modifier
+            .padding(top = 50.dp)
             .fillMaxSize()
             .background(Midnight)
             .verticalScroll(rememberScrollState())

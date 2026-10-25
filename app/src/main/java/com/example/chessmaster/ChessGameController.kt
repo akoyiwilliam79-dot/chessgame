@@ -1,4 +1,3 @@
-
 package com.example.chessmaster
 
 import com.github.bhlangonijr.chesslib.Board
@@ -32,8 +31,26 @@ data class RecordedMove(
 class ChessGameController {
 
     private val board = Board()
+
+    /*
+     * Position history:
+     * positions[0] is the initial position.
+     * Every successfully played move adds one position.
+     */
     private val positions = mutableListOf<String>()
+
     private val moveHistory = mutableListOf<RecordedMove>()
+
+    /*
+     * Exact moves corresponding to moveHistory.
+     * This preserves promotion information.
+     */
+    private val playedMoves = mutableListOf<Move>()
+
+    /*
+     * The last move undone is the next move available for redo.
+     */
+    private val redoHistory = mutableListOf<Move>()
 
     private var resignedBy: Side? = null
     private var agreedDraw = false
@@ -58,49 +75,42 @@ class ChessGameController {
         getLegalMoves().filter { it.from == square }
 
     fun isLegalMove(from: Square, to: Square): Boolean =
-        getLegalMoves().any { it.from == from && it.to == to }
+        getLegalMoves().any {
+            it.from == from && it.to == to
+        }
 
     fun findLegalMove(from: Square, to: Square): Move? =
         getLegalMoves().firstOrNull {
             it.from == from && it.to == to
         }
 
-    /**
-     * Plays a move selected by its source and destination.
-     *
-     * Used by normal board interaction.
-     */
     fun playMove(from: Square, to: Square): Boolean {
         val move = findLegalMove(from, to) ?: return false
         return playMove(move)
     }
 
-    /**
-     * Plays the exact legal move selected by the AI.
-     *
-     * Important for promotion moves because multiple legal moves
-     * can share the same source and destination squares.
-     */
     fun playMove(move: Move): Boolean {
         if (isGameOver()) return false
 
-        val legalMove = getLegalMoves().firstOrNull {
+        val legalMove = board.legalMoves().firstOrNull {
             it.from == move.from &&
                     it.to == move.to &&
                     it.promotion == move.promotion
         } ?: return false
 
-        val previousFen = board.fen
         val movingSide = board.sideToMove
-        val moveNumber = moveHistory.size / 2 + 1
 
         if (!board.doMove(legalMove)) return false
 
-        positions.add(previousFen)
+        // A new move creates a new branch.
+        redoHistory.clear()
+
+        positions.add(board.fen)
+        playedMoves.add(legalMove)
 
         moveHistory.add(
             RecordedMove(
-                number = moveNumber,
+                number = moveHistory.size / 2 + 1,
                 player = if (movingSide == Side.WHITE) "White" else "Black",
                 from = legalMove.from.name,
                 to = legalMove.to.name
@@ -114,19 +124,74 @@ class ChessGameController {
 
     fun canUndo(): Boolean =
         positions.size > 1 &&
+                playedMoves.isNotEmpty() &&
+                moveHistory.isNotEmpty() &&
                 resignedBy == null &&
                 !agreedDraw
 
     fun undoMove(): Boolean {
         if (!canUndo()) return false
 
-        val previousFen = positions.removeAt(positions.lastIndex)
+        val previousFen = positions[positions.lastIndex - 1]
+        val undoneMove = playedMoves.last()
 
-        board.loadFromFen(previousFen)
+        /*
+         * Restore the board before changing any history.
+         * If loading fails, leave the histories untouched.
+         */
+        val restored = runCatching {
+            board.loadFromFen(previousFen)
+            board.fen == previousFen
+        }.getOrDefault(false)
 
-        if (moveHistory.isNotEmpty()) {
-            moveHistory.removeAt(moveHistory.lastIndex)
-        }
+        if (!restored) return false
+
+        positions.removeAt(positions.lastIndex)
+        playedMoves.removeAt(playedMoves.lastIndex)
+        moveHistory.removeAt(moveHistory.lastIndex)
+
+        redoHistory.add(undoneMove)
+        drawOfferedBy = null
+
+        return true
+    }
+
+    fun canRedo(): Boolean =
+        redoHistory.isNotEmpty() &&
+                resignedBy == null &&
+                !agreedDraw &&
+                !board.isMated() &&
+                !board.isStaleMate() &&
+                !isInsufficientMaterial()
+
+    fun redoMove(): Boolean {
+        if (!canRedo()) return false
+
+        val move = redoHistory.last()
+
+        val legalMove = board.legalMoves().firstOrNull {
+            it.from == move.from &&
+                    it.to == move.to &&
+                    it.promotion == move.promotion
+        } ?: return false
+
+        val movingSide = board.sideToMove
+
+        if (!board.doMove(legalMove)) return false
+
+        redoHistory.removeAt(redoHistory.lastIndex)
+
+        positions.add(board.fen)
+        playedMoves.add(legalMove)
+
+        moveHistory.add(
+            RecordedMove(
+                number = moveHistory.size / 2 + 1,
+                player = if (movingSide == Side.WHITE) "White" else "Black",
+                from = legalMove.from.name,
+                to = legalMove.to.name
+            )
+        )
 
         drawOfferedBy = null
 
@@ -160,7 +225,7 @@ class ChessGameController {
                 drawOfferedBy != board.sideToMove
 
     fun acceptDraw(): Boolean {
-        if (isGameOver() || drawOfferedBy == null) return false
+        if (!canAcceptDraw()) return false
 
         agreedDraw = true
         drawOfferedBy = null
@@ -299,6 +364,8 @@ class ChessGameController {
         positions.add(board.fen)
 
         moveHistory.clear()
+        playedMoves.clear()
+        redoHistory.clear()
 
         resignedBy = null
         agreedDraw = false
@@ -317,7 +384,6 @@ class ChessGameController {
         }
 
         val fileLetter = ('A'.code + file).toChar()
-
         return Square.valueOf("$fileLetter${rank + 1}")
     }
 

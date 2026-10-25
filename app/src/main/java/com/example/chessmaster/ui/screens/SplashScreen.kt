@@ -1,4 +1,4 @@
-package com.example.chessmaster.screens
+package com.example.chessmaster.ui.screens
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,132 +7,142 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
-
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Text
 import kotlinx.coroutines.delay
-
-
-private val BackgroundColor = Color(0xFF10141C)
-private val GoldColor = Color(0xFFFFC857)
-private val MutedTextColor = Color(0xFFADB5C4)
 
 @Composable
 fun SplashScreen(
-    onFinished: () -> Unit
+    onContinue: () -> Unit
 ) {
-
-    // Automatically continue after 2.5 seconds.
-    LaunchedEffect(Unit) {
-        delay(2500L)
-        onFinished()
+    var showContent by remember {
+        mutableStateOf(false)
     }
 
-    val infiniteTransition = rememberInfiniteTransition(
-        label = "SplashAnimation"
+    val transition = rememberInfiniteTransition(
+        label = "splash_glow"
     )
 
-    val iconScale by infiniteTransition.animateFloat(
-        initialValue = 0.90f,
+    val glow by transition.animateFloat(
+        initialValue = 0.88f,
         targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 900,
+                durationMillis = 1600,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "KnightScale"
+        label = "glow"
     )
+
+    LaunchedEffect(Unit) {
+        delay(700)
+        showContent = true
+        delay(1800)
+        onContinue()
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundColor),
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF111B31),
+                        Midnight,
+                        Color(0xFF080C16)
+                    )
+                )
+            ),
         contentAlignment = Alignment.Center
     ) {
-
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(28.dp)
         ) {
-
-            Icon(
-                imageVector = Icons.Default.EmojiEvents,
-                contentDescription = "ChessMaster emblem",
-                tint = GoldColor,
+            Box(
                 modifier = Modifier
-                    .size(100.dp)
-                    .scale(iconScale)
-            )
+                    .size(150.dp)
+                    .scale(glow)
+                    .background(
+                        Gold.copy(alpha = 0.07f),
+                        CircleShape
+                    )
+                    .border(
+                        1.dp,
+                        Gold.copy(alpha = 0.45f),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "♞",
+                    color = Gold,
+                    fontSize = 95.sp
+                )
+            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(Modifier.height(30.dp))
 
             Text(
                 text = "CHESSMASTER",
-                color = Color.White,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 3.sp
+                color = Ivory,
+                fontSize = 29.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 3.sp,
+                modifier = Modifier.alpha(
+                    if (showContent) 1f else 0f
+                )
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "THINK. PLAN. CONQUER.",
-                color = GoldColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                text = "THINK AHEAD. PLAY SMART.",
+                color = Gold,
+                fontSize = 11.sp,
+                letterSpacing = 2.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.alpha(
+                    if (showContent) 1f else 0f
+                )
+            )
+
+            Spacer(Modifier.height(58.dp))
+
+            Text(
+                text = "PREPARE YOUR NEXT MOVE",
+                color = Muted,
+                fontSize = 10.sp,
                 letterSpacing = 2.sp
             )
-
-            Spacer(modifier = Modifier.height(42.dp))
-
-            CircularProgressIndicator(
-                modifier = Modifier.size(28.dp),
-                color = GoldColor,
-                strokeWidth = 2.dp
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = "Preparing your battlefield...",
-                color = MutedTextColor,
-                fontSize = 12.sp
-            )
         }
-
-        Text(
-            text = "A NEW CHESS EXPERIENCE",
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .let { it },
-            color = MutedTextColor,
-            fontSize = 10.sp,
-            letterSpacing = 2.sp
-        )
     }
 }

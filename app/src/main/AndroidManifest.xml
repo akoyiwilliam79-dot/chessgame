@@ -2,26 +2,28 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    ```
     <application
         android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="ChessMaster"
         android:supportsRtl="true"
         android:theme="@style/Theme.ChessMaster">
 
+        <!-- The actual 3D chess game -->
         <activity
             android:name=".Chess3DActivity"
             android:exported="false" />
 
+        <!-- Legacy game modes screen; retained for compatibility -->
         <activity
             android:name=".GameModesActivity"
             android:exported="false" />
 
+        <!-- Main navigation: splash, welcome, game modes, opponents -->
         <activity
             android:name=".MainActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".HomeActivity"
             android:exported="true">
 
             <intent-filter>
@@ -31,7 +33,12 @@
 
         </activity>
 
+        <!-- Retained, but no longer the launcher -->
+        <activity
+            android:name=".HomeActivity"
+            android:exported="false" />
+
     </application>
+    ```
 
 </manifest>
-

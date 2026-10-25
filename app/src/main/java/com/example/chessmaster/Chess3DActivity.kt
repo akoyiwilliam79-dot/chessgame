@@ -1,11 +1,19 @@
+
 package com.example.chessmaster
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +54,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+
+
 // ============================================================
 // CHESSMASTER DESIGN SYSTEM
 // ============================================================
@@ -52,7 +63,7 @@ import kotlinx.coroutines.launch
 private val BoardLight = Color(0xFFE6D4B5)
 private val BoardDark = Color(0xFF345548)
 
-private val AppBackground = Color(0xFF0A0F15)
+private val AppBackground = Color(0xFF111823)
 private val Gold = Color(0xFFE5BE69)
 private val Panel = Color(0xFF151E28)
 private val Muted = Color(0xFF9BA9B8)
@@ -114,7 +125,7 @@ private data class VisualSnapshot(
 )
 
 // ============================================================
-// 3D PIECE MODELS
+// PIECE MODELS
 // ============================================================
 
 private fun modelFileFor(
@@ -123,46 +134,28 @@ private fun modelFileFor(
 ): String {
     return when (piece.lowercase()) {
         "king" ->
-            if (side == "White") {
-                "01_king_light.glb"
-            } else {
-                "02_king_dark.glb"
-            }
+            if (side == "White") "01_king_light.glb"
+            else "02_king_dark.glb"
 
         "queen" ->
-            if (side == "White") {
-                "03_queen_light.glb"
-            } else {
-                "04_queen_dark.glb"
-            }
+            if (side == "White") "03_queen_light.glb"
+            else "04_queen_dark.glb"
 
         "bishop" ->
-            if (side == "White") {
-                "05_bishop_light.glb"
-            } else {
-                "06_bishop_dark.glb"
-            }
+            if (side == "White") "05_bishop_light.glb"
+            else "06_bishop_dark.glb"
 
         "knight" ->
-            if (side == "White") {
-                "07_knight_light.glb"
-            } else {
-                "08_knight_dark.glb"
-            }
+            if (side == "White") "07_knight_light.glb"
+            else "08_knight_dark.glb"
 
         "rook" ->
-            if (side == "White") {
-                "09_rook_light.glb"
-            } else {
-                "10_rook_dark.glb"
-            }
+            if (side == "White") "09_rook_light.glb"
+            else "10_rook_dark.glb"
 
         "pawn" ->
-            if (side == "White") {
-                "11_pawn_light.glb"
-            } else {
-                "12_pawn_dark.glb"
-            }
+            if (side == "White") "11_pawn_light.glb"
+            else "12_pawn_dark.glb"
 
         else -> error("Unknown chess piece: $piece")
     }
@@ -172,14 +165,8 @@ private fun createStartingPieces(): List<ChessPiece> {
     val pieces = mutableListOf<ChessPiece>()
 
     val backRank = listOf(
-        "rook",
-        "knight",
-        "bishop",
-        "queen",
-        "king",
-        "bishop",
-        "knight",
-        "rook"
+        "rook", "knight", "bishop", "queen",
+        "king", "bishop", "knight", "rook"
     )
 
     for (file in 0..7) {
@@ -224,13 +211,44 @@ private fun createStartingPieces(): List<ChessPiece> {
 }
 
 // ============================================================
-// MAIN CHESS SCREEN
+// MAIN SCREEN
 // ============================================================
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 private fun Chess3DScreen() {
 
     val context = LocalContext.current
+    val launchIntent = (context as? android.app.Activity)?.intent
+
+    val hasLaunchSettings =
+        launchIntent?.hasExtra("GAME_MODE") == true
+
+    val initialGameMode = remember {
+        launchIntent
+            ?.getStringExtra("GAME_MODE")
+            ?.let { modeName ->
+                runCatching {
+                    GameMode.valueOf(modeName)
+                }.getOrNull()
+            } ?: GameMode.PLAYER_VS_COMPUTER
+    }
+
+    // Four opponent cards can map onto three AI difficulty levels.
+    val initialOpponentIndex = remember {
+        launchIntent
+            ?.getIntExtra("OPPONENT_INDEX", 1)
+            ?.coerceIn(0, 3) ?: 1
+    }
+
+    val initialDifficulty = remember {
+        when (initialOpponentIndex) {
+            0 -> AIDifficulty.EASY
+            1 -> AIDifficulty.MEDIUM
+            else -> AIDifficulty.HARD
+        }
+    }
+
     val coroutineScope = rememberCoroutineScope()
 
     val moveAnimator = remember {
@@ -260,16 +278,22 @@ private fun Chess3DScreen() {
         ChessAI()
     }
 
-    // --------------------------------------------------------
-    // GAME SETTINGS
-    // --------------------------------------------------------
+    // ========================================================
+    // SETTINGS
+    // ========================================================
 
     var gameSettings by remember {
-        mutableStateOf(GameSettings())
+        mutableStateOf(
+            GameSettings(
+                mode = initialGameMode,
+                playerColor = PlayerColor.WHITE,
+                difficulty = initialDifficulty
+            )
+        )
     }
 
     var selectedGameMode by remember {
-        mutableStateOf(GameMode.PLAYER_VS_COMPUTER)
+        mutableStateOf(initialGameMode)
     }
 
     var selectedPlayerColor by remember {
@@ -277,15 +301,16 @@ private fun Chess3DScreen() {
     }
 
     var selectedDifficulty by remember {
-        mutableStateOf(AIDifficulty.MEDIUM)
+        mutableStateOf(initialDifficulty)
     }
 
     var showGameSetup by remember {
-        mutableStateOf(true)
+        mutableStateOf(!hasLaunchSettings)
     }
-    // --------------------------------------------------------
+
+    // ========================================================
     // GAME STATE
-    // --------------------------------------------------------
+    // ========================================================
 
     var isAnimating by remember {
         mutableStateOf(false)
@@ -339,9 +364,9 @@ private fun Chess3DScreen() {
         mutableStateOf("")
     }
 
-    // --------------------------------------------------------
-    // DIALOG STATE
-    // --------------------------------------------------------
+    // ========================================================
+    // DIALOGS
+    // ========================================================
 
     var showHistory by remember {
         mutableStateOf(false)
@@ -359,9 +384,9 @@ private fun Chess3DScreen() {
         mutableStateOf(false)
     }
 
-    // --------------------------------------------------------
+    // ========================================================
     // SCENE STATE
-    // --------------------------------------------------------
+    // ========================================================
 
     var boardRevision by remember {
         mutableIntStateOf(0)
@@ -391,12 +416,19 @@ private fun Chess3DScreen() {
         mutableMapOf<CubeNode, Square>()
     }
 
+    // Each snapshot represents the position before a move.
     val visualHistory = remember {
         mutableListOf<VisualSnapshot>()
     }
 
+    // Snapshots of positions after moves that were undone.
+    // The last item is the next visual position to redo.
+    val redoVisualHistory = remember {
+        mutableListOf<VisualSnapshot>()
+    }
+
     // ========================================================
-    // GAME HELPERS
+    // GENERAL HELPERS
     // ========================================================
 
     fun refreshStatus() {
@@ -414,10 +446,7 @@ private fun Chess3DScreen() {
         highlightSquares.clear()
     }
 
-    fun addHighlight(
-        square: Square,
-        color: Color
-    ) {
+    fun addHighlight(square: Square, color: Color) {
         val file = controller.fileOf(square)
         val rank = controller.rankOf(square)
 
@@ -442,8 +471,7 @@ private fun Chess3DScreen() {
 
         val checkedSide = controller.getTurn()
 
-        val kingSquare = pieceNodes.entries.firstOrNull {
-                (_, piece) ->
+        val kingSquare = pieceNodes.entries.firstOrNull { (_, piece) ->
             piece.name.equals("king", ignoreCase = true) &&
                     piece.side == checkedSide
         }?.key
@@ -453,21 +481,49 @@ private fun Chess3DScreen() {
         }
     }
 
-    fun saveVisualSnapshot() {
-        visualHistory.add(
-            VisualSnapshot(
-                pieces = pieceNodes.toMap(),
-                positions = pieceNodes.mapValues { (_, visual) ->
-                    visual.node.position
-                },
-                whiteLoaded = whiteLoaded,
-                blackLoaded = blackLoaded
-            )
+    fun captureVisualSnapshot(): VisualSnapshot {
+        return VisualSnapshot(
+            pieces = pieceNodes.toMap(),
+            positions = pieceNodes.mapValues { (_, visual) ->
+                visual.node.position
+            },
+            whiteLoaded = whiteLoaded,
+            blackLoaded = blackLoaded
         )
+    }
+
+    fun saveVisualSnapshot() {
+        visualHistory.add(captureVisualSnapshot())
+    }
+
+    fun restoreVisualSnapshot(snapshot: VisualSnapshot) {
+        pieceNodes.values.forEach { visual ->
+            nodes.remove(visual.node)
+        }
+
+        pieceNodes.clear()
+
+        snapshot.pieces.forEach { (square, visual) ->
+            snapshot.positions[square]?.let { savedPosition ->
+                visual.node.position = savedPosition
+            }
+
+            nodes.add(visual.node)
+            pieceNodes[square] = visual
+        }
+
+        whiteLoaded = snapshot.whiteLoaded
+        blackLoaded = snapshot.blackLoaded
     }
 
     fun isUserTurn(): Boolean {
         return !gameSettings.isComputerTurn(controller.getTurn())
+    }
+
+    fun clearSelection() {
+        selectedSquare = null
+        legalTargets = emptySet()
+        clearHighlights()
     }
 
     // ========================================================
@@ -475,7 +531,6 @@ private fun Chess3DScreen() {
     // ========================================================
 
     fun selectPiece(square: Square) {
-
         if (
             loading ||
             isAnimating ||
@@ -506,7 +561,6 @@ private fun Chess3DScreen() {
         }
 
         selectedSquare = square
-
         legalTargets = controller.getLegalMovesFrom(square)
             .map { it.to }
             .toSet()
@@ -531,7 +585,6 @@ private fun Chess3DScreen() {
     // ========================================================
 
     suspend fun showCaptureEffect(square: Square) {
-
         val effect = CubeNode(
             engine = engine,
             size = Size(0.72f, 0.035f, 0.72f),
@@ -559,7 +612,6 @@ private fun Chess3DScreen() {
     // ========================================================
 
     suspend fun promotePawnIfNeeded(square: Square) {
-
         val pawn = pieceNodes[square] ?: return
 
         if (!pawn.isPawn) return
@@ -569,10 +621,7 @@ private fun Chess3DScreen() {
         if (rank != 0 && rank != 7) return
 
         try {
-            val queenModelFile = modelFileFor(
-                "queen",
-                pawn.side
-            )
+            val queenModelFile = modelFileFor("queen", pawn.side)
 
             val instance = modelLoader.loadModelInstance(
                 fileLocation = "models/$queenModelFile"
@@ -599,7 +648,6 @@ private fun Chess3DScreen() {
                 node = queenNode,
                 isPawn = false
             )
-
         } catch (exception: Exception) {
             message = "Promotion visual error: " +
                     (exception.message ?: "Unknown error")
@@ -607,10 +655,7 @@ private fun Chess3DScreen() {
     }
 
     // ========================================================
-    // EXECUTE A LEGAL MOVE
-    //
-    // forcedMove is used for AI moves. Human moves are resolved
-    // from the controller's legal-move list.
+    // EXECUTE MOVE
     // ========================================================
 
     fun executeMove(
@@ -618,7 +663,6 @@ private fun Chess3DScreen() {
         to: Square,
         forcedMove: Move? = null
     ) {
-
         if (
             loading ||
             isAnimating ||
@@ -678,7 +722,6 @@ private fun Chess3DScreen() {
         var rookVisual: PieceVisual? = null
 
         if (isCastling) {
-
             rookFrom = controller.squareAt(
                 if (toFile > fromFile) 7 else 0,
                 fromRank
@@ -700,13 +743,15 @@ private fun Chess3DScreen() {
             return
         }
 
+        // A new move creates a new branch; old redo moves are discarded.
+        redoVisualHistory.clear()
+
         isAnimating = true
 
         pieceNodes.remove(from)
         pieceNodes[to] = visual
 
         if (captured != null) {
-
             pieceNodes.remove(capturedSquare)
             nodes.remove(captured.node)
 
@@ -717,19 +762,12 @@ private fun Chess3DScreen() {
             }
         }
 
-        if (
-            rookFrom != null &&
-            rookTo != null &&
-            rookVisual != null
-        ) {
+        if (rookFrom != null && rookTo != null && rookVisual != null) {
             pieceNodes.remove(rookFrom)
             pieceNodes[rookTo] = rookVisual
         }
 
-        selectedSquare = null
-        legalTargets = emptySet()
-
-        clearHighlights()
+        clearSelection()
         highlightCheckedKing()
 
         refreshStatus()
@@ -738,7 +776,6 @@ private fun Chess3DScreen() {
         val result = controller.getResult()
 
         message = when {
-
             result.outcome != MatchOutcome.IN_PROGRESS ->
                 result.description
 
@@ -755,9 +792,7 @@ private fun Chess3DScreen() {
         }
 
         coroutineScope.launch {
-
             try {
-
                 val startPosition = visual.node.position
 
                 val destinationPosition = moveAnimator.positionFor(
@@ -776,12 +811,7 @@ private fun Chess3DScreen() {
                     )
                 }
 
-                if (
-                    rookVisual != null &&
-                    rookFrom != null &&
-                    rookTo != null
-                ) {
-
+                if (rookVisual != null && rookFrom != null && rookTo != null) {
                     val rookStart = rookVisual.node.position
 
                     val rookDestination = moveAnimator.positionFor(
@@ -814,16 +844,15 @@ private fun Chess3DScreen() {
                     delay(120L)
                     soundManager.playCheck()
                 }
-
             } catch (exception: CancellationException) {
                 throw exception
-
             } catch (exception: Exception) {
                 message = "Move completed, but an animation effect failed: " +
                         (exception.message ?: "Unknown error")
-
             } finally {
                 isAnimating = false
+                refreshStatus()
+                historyRevision++
             }
         }
     }
@@ -833,7 +862,6 @@ private fun Chess3DScreen() {
     // ========================================================
 
     fun handleSquareTap(square: Square) {
-
         if (
             loading ||
             isAnimating ||
@@ -850,29 +878,21 @@ private fun Chess3DScreen() {
 
         if (controller.isGameOver()) {
             val result = controller.getResult()
-
             gameStatus = result.title
             message = "${result.description}\nFinal Score: ${result.score}"
-
             return
         }
 
         val currentSelection = selectedSquare
 
-        if (
-            currentSelection != null &&
-            square in legalTargets
-        ) {
+        if (currentSelection != null && square in legalTargets) {
             executeMove(currentSelection, square)
             return
         }
 
         val visual = pieceNodes[square]
 
-        if (
-            visual != null &&
-            visual.side == controller.getTurn()
-        ) {
+        if (visual != null && visual.side == controller.getTurn()) {
             selectPiece(square)
         } else {
             message = if (currentSelection != null) {
@@ -884,7 +904,6 @@ private fun Chess3DScreen() {
     }
 
     fun handleNodeTap(node: Any?) {
-
         if (
             node == null ||
             loading ||
@@ -908,7 +927,6 @@ private fun Chess3DScreen() {
             .firstOrNull { it.value.node === node }
 
         if (tappedPieceEntry != null) {
-
             val tappedSquare = tappedPieceEntry.key
             val tappedPiece = tappedPieceEntry.value
 
@@ -947,94 +965,10 @@ private fun Chess3DScreen() {
     }
 
     // ========================================================
-    // AI OPPONENT
-    // ========================================================
-
-    LaunchedEffect(
-        turn,
-        loading,
-        isAnimating,
-        showGameSetup,
-        gameSettings
-    ) {
-
-        if (
-            loading ||
-            isAnimating ||
-            showGameSetup
-        ) {
-            return@LaunchedEffect
-        }
-
-        if (controller.isGameOver()) {
-            aiThinking = false
-            return@LaunchedEffect
-        }
-
-        if (!gameSettings.isComputerTurn(controller.getTurn())) {
-            aiThinking = false
-            return@LaunchedEffect
-        }
-
-        if (aiThinking) {
-            return@LaunchedEffect
-        }
-
-        aiThinking = true
-        message = "ChessMaster is analysing the position..."
-
-        try {
-
-            val fen = controller.getFen()
-            val difficulty = gameSettings.difficulty
-
-            val computerMove = chessAI.chooseMove(
-                fen = fen,
-                difficulty = difficulty
-            )
-
-            if (computerMove == null) {
-
-                aiThinking = false
-                refreshStatus()
-
-                message = controller.getResult().description
-
-                return@LaunchedEffect
-            }
-
-            if (
-                !controller.isGameOver() &&
-                !loading &&
-                !showGameSetup
-            ) {
-                executeMove(
-                    from = computerMove.from,
-                    to = computerMove.to,
-                    forcedMove = computerMove
-                )
-            }
-
-        } catch (exception: CancellationException) {
-
-            throw exception
-
-        } catch (exception: Exception) {
-
-            message = "Computer opponent error: " +
-                    (exception.message ?: "Unknown error")
-
-        } finally {
-            aiThinking = false
-        }
-    }
-
-    // ========================================================
     // UNDO
     // ========================================================
 
     fun undoLastMove() {
-
         if (loading || isAnimating || aiThinking) {
             message = "Wait until the current move finishes."
             return
@@ -1045,6 +979,8 @@ private fun Chess3DScreen() {
             return
         }
 
+        clearSelection()
+
         val movesToUndo = if (
             gameSettings.mode == GameMode.PLAYER_VS_COMPUTER &&
             controller.getMoveCount() >= 2
@@ -1054,46 +990,101 @@ private fun Chess3DScreen() {
             1
         }
 
-        repeat(movesToUndo) {
+        var undone = 0
 
+        repeat(movesToUndo) {
             if (!controller.canUndo()) return@repeat
 
-            if (!controller.undoMove()) return@repeat
+            // Save the current visual position before undoing.
+            val afterMoveSnapshot = captureVisualSnapshot()
 
-            val snapshot = visualHistory.removeLastOrNull()
-
-            if (snapshot != null) {
-
-                pieceNodes.values.forEach {
-                    nodes.remove(it.node)
-                }
-
-                pieceNodes.clear()
-
-                snapshot.pieces.forEach { (square, visual) ->
-
-                    snapshot.positions[square]?.let { savedPosition ->
-                        visual.node.position = savedPosition
-                    }
-
-                    nodes.add(visual.node)
-                    pieceNodes[square] = visual
-                }
-
-                whiteLoaded = snapshot.whiteLoaded
-                blackLoaded = snapshot.blackLoaded
+            if (!controller.undoMove()) {
+                return@repeat
             }
+
+            redoVisualHistory.add(afterMoveSnapshot)
+
+            val previousSnapshot = visualHistory.removeLastOrNull()
+
+            if (previousSnapshot != null) {
+                restoreVisualSnapshot(previousSnapshot)
+            }
+
+            undone++
         }
 
         clearHighlights()
-
-        selectedSquare = null
-        legalTargets = emptySet()
-
         refreshStatus()
         historyRevision++
 
-        message = "Move undone. ${controller.getTurn()} to move."
+        message = if (undone > 0) {
+            "$undone move(s) undone. ${controller.getTurn()} to move."
+        } else {
+            "Unable to undo the move."
+        }
+    }
+
+    // ========================================================
+    // REDO
+    // ========================================================
+
+    fun redoLastMove() {
+        if (loading || isAnimating || aiThinking) {
+            message = "Wait until the current move finishes."
+            return
+        }
+
+        if (!controller.canRedo() || redoVisualHistory.isEmpty()) {
+            message = "There are no moves available to redo."
+            return
+        }
+
+        clearSelection()
+
+        val movesToRedo = if (
+            gameSettings.mode == GameMode.PLAYER_VS_COMPUTER &&
+            redoVisualHistory.size >= 2 &&
+            controller.canRedo()
+        ) {
+            2
+        } else {
+            1
+        }
+
+        var redone = 0
+
+        repeat(movesToRedo) {
+            if (!controller.canRedo() || redoVisualHistory.isEmpty()) {
+                return@repeat
+            }
+
+            // Preserve the position before this redo so it can be undone again.
+            val beforeMoveSnapshot = captureVisualSnapshot()
+
+            if (!controller.redoMove()) {
+                return@repeat
+            }
+
+            visualHistory.add(beforeMoveSnapshot)
+
+            // Snapshots are stored in undo order, so the last item is next.
+            val afterMoveSnapshot = redoVisualHistory.removeAt(
+                redoVisualHistory.lastIndex
+            )
+
+            restoreVisualSnapshot(afterMoveSnapshot)
+            redone++
+        }
+
+        clearHighlights()
+        refreshStatus()
+        historyRevision++
+
+        message = if (redone > 0) {
+            "$redone move(s) restored. ${controller.getTurn()} to move."
+        } else {
+            "Unable to redo the move."
+        }
     }
 
     // ========================================================
@@ -1101,7 +1092,6 @@ private fun Chess3DScreen() {
     // ========================================================
 
     fun restartGame() {
-
         if (isAnimating) {
             message = "Wait for the current animation to finish."
             return
@@ -1112,15 +1102,15 @@ private fun Chess3DScreen() {
 
         controller.restart()
 
-        selectedSquare = null
-        legalTargets = emptySet()
+        clearSelection()
 
         visualHistory.clear()
+        redoVisualHistory.clear()
 
         clearHighlights()
 
-        pieceNodes.values.forEach {
-            nodes.remove(it.node)
+        pieceNodes.values.forEach { visual ->
+            nodes.remove(visual.node)
         }
 
         pieceNodes.clear()
@@ -1148,7 +1138,6 @@ private fun Chess3DScreen() {
         loading,
         boardRevision
     ) {
-
         if (!loading) return@LaunchedEffect
 
         loadError = ""
@@ -1156,15 +1145,11 @@ private fun Chess3DScreen() {
         blackLoaded = 0
 
         if (squareNodes.isEmpty()) {
-
             for (rank in 0..7) {
                 for (file in 0..7) {
-
                     val square = controller.squareAt(file, rank)
 
-                    val color = if (
-                        (file + rank) % 2 == 0
-                    ) {
+                    val color = if ((file + rank) % 2 == 0) {
                         BoardLight
                     } else {
                         BoardDark
@@ -1189,16 +1174,11 @@ private fun Chess3DScreen() {
         }
 
         for (piece in createStartingPieces()) {
-
-            val square = controller.squareAt(
-                piece.file,
-                piece.rank
-            )
+            val square = controller.squareAt(piece.file, piece.rank)
 
             if (pieceNodes.containsKey(square)) continue
 
             try {
-
                 val instance = modelLoader.loadModelInstance(
                     fileLocation = "models/${piece.modelFile}"
                 )
@@ -1235,9 +1215,7 @@ private fun Chess3DScreen() {
                 } else {
                     blackLoaded++
                 }
-
             } catch (exception: Exception) {
-
                 loadError += "${piece.modelFile}: " +
                         "${exception.message ?: "Loading failed"}\n"
             }
@@ -1253,460 +1231,558 @@ private fun Chess3DScreen() {
         }
     }
 
+    // ========================================================
+    // COMPUTER OPPONENT
+    // ========================================================
+
+    LaunchedEffect(
+        turn,
+        loading,
+        isAnimating,
+        showGameSetup,
+        gameSettings
+    ) {
+        if (loading || isAnimating || showGameSetup) {
+            return@LaunchedEffect
+        }
+
+        if (controller.isGameOver()) {
+            aiThinking = false
+            return@LaunchedEffect
+        }
+
+        if (!gameSettings.isComputerTurn(controller.getTurn())) {
+            aiThinking = false
+            return@LaunchedEffect
+        }
+
+        if (aiThinking) return@LaunchedEffect
+
+        aiThinking = true
+        message = "ChessMaster is analysing the position..."
+
+        try {
+            val fen = controller.getFen()
+            val difficulty = gameSettings.difficulty
+
+            val computerMove = chessAI.chooseMove(
+                fen = fen,
+                difficulty = difficulty
+            )
+
+            if (computerMove == null) {
+                refreshStatus()
+                message = controller.getResult().description
+                return@LaunchedEffect
+            }
+
+            if (
+                !controller.isGameOver() &&
+                !loading &&
+                !showGameSetup
+            ) {
+                executeMove(
+                    from = computerMove.from,
+                    to = computerMove.to,
+                    forcedMove = computerMove
+                )
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            message = "Computer opponent error: " +
+                    (exception.message ?: "Unknown error")
+        } finally {
+            aiThinking = false
+        }
+    }
+
+    // ========================================================
+    // CAMERA
+    // ========================================================
+
     val cameraManipulator = rememberCameraManipulator(
         orbitHomePosition = Position(0f, 9f, 10f),
         targetPosition = Position(0f, 0f, 0f)
     )
 
     // ========================================================
-    // MAIN SCREEN UI
+    // MAIN USER INTERFACE
     // ========================================================
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(AppBackground)
     ) {
-
-        // HEADER
-
-        Column(
-            modifier = Modifier
-                .padding(top = 42.dp)
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 20.dp,
-                    vertical = 12.dp
-                )
-        ) {
-
-            Text(
-                text = "CHESSMASTER",
-                color = Gold,
-                fontSize = 25.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 2.sp
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            Text(
-                text = "THE 3D CHESS EXPERIENCE",
-                color = Muted,
-                fontSize = 11.sp,
-                letterSpacing = 2.sp
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-
-                Column {
-
-                    Text(
-                        text = if (
-                            gameSettings.mode ==
-                            GameMode.PLAYER_VS_COMPUTER
-                        ) {
-                            "PLAYER VS COMPUTER"
-                        } else {
-                            "PLAYER VS PLAYER"
-                        },
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
-
-                    Text(
-                        text = if (
-                            gameSettings.mode ==
-                            GameMode.PLAYER_VS_COMPUTER
-                        ) {
-                            "${gameSettings.playerColor.title} · " +
-                                    gameSettings.difficulty.title
-                        } else {
-                            "Local multiplayer"
-                        },
-                        color = Muted,
-                        fontSize = 10.sp
-                    )
-                }
-
-                Surface(
-                    color = Panel,
-                    shape = RoundedCornerShape(50)
-                ) {
-
-                    Text(
-                        text = gameStatus,
-                        color = when {
-                            gameStatus.contains(
-                                "CHECKMATE",
-                                ignoreCase = true
-                            ) ||
-                                    gameStatus.contains(
-                                        "CHECK",
-                                        ignoreCase = true
-                                    ) -> ErrorRed
-
-                            else -> Gold
-                        },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 9.sp,
-                        modifier = Modifier.padding(
-                            horizontal = 10.dp,
-                            vertical = 8.dp
-                        )
-                    )
-                }
-            }
-        }
-
-        // 3D SCENE
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center
-        ) {
-
-            Scene(
-                modifier = Modifier.fillMaxSize(),
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                childNodes = nodes,
-                cameraManipulator = cameraManipulator,
-                onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { _, node ->
-                        latestNodeTap(node)
-                    }
-                )
-            )
-
-            if (loading) {
-                Surface(
-                    color = Panel,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = "Preparing 3D board...",
-                        color = Gold,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(
-                            horizontal = 18.dp,
-                            vertical = 12.dp
-                        )
-                    )
-                }
-            }
-        }
-
-        // LIVE MATCH PANEL
+        val compactLayout = maxWidth < 380.dp || maxHeight < 700.dp
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Panel,
-                    RoundedCornerShape(
-                        topStart = 22.dp,
-                        topEnd = 22.dp
-                    )
-                )
-                .padding(
-                    horizontal = 16.dp,
-                    vertical = 12.dp
-                )
+            modifier = Modifier.fillMaxSize()
         ) {
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // HEADER
 
-                Text(
-                    text = "LIVE MATCH",
-                    color = Gold,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
-                )
-
-                Surface(
-                    color = ButtonSurface,
-                    shape = CircleShape
-                ) {
-
-                    Text(
-                        text = when {
-                            loading -> "LOADING"
-                            aiThinking -> "AI THINKING"
-                            isAnimating -> "ANIMATING"
-                            controller.isGameOver() -> "FINISHED"
-                            else -> "● LIVE"
-                        },
-                        color = when {
-                            aiThinking -> Gold
-                            loading || isAnimating -> Muted
-                            controller.isGameOver() -> ErrorRed
-                            else -> Green
-                        },
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(
-                            horizontal = 10.dp,
-                            vertical = 6.dp
-                        )
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = message,
-                color = Color.White,
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-
-                StatusCounter(
-                    label = "WHITE",
-                    value = "$whiteLoaded / 16",
-                    valueColor = Color.White
-                )
-
-                StatusCounter(
-                    label = "BLACK",
-                    value = "$blackLoaded / 16",
-                    valueColor = Gold
-                )
-
-                StatusCounter(
-                    label = "MOVES",
-                    value = moveCount.toString(),
-                    valueColor = Green
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-
-                PremiumButton(
-                    label = "↶ UNDO",
-                    modifier = Modifier.weight(1f),
-                    enabled = !loading &&
-                            !isAnimating &&
-                            !aiThinking &&
-                            controller.canUndo(),
-                    onClick = { undoLastMove() }
-                )
-
-                PremiumButton(
-                    label = "☷ HISTORY",
-                    modifier = Modifier.weight(1f),
-                    enabled = !loading,
-                    onClick = { showHistory = true }
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-
-                PremiumButton(
-                    label = "OFFER DRAW",
-                    modifier = Modifier.weight(1f),
-                    enabled = !loading &&
-                            !isAnimating &&
-                            !aiThinking &&
-                            !controller.isGameOver() &&
-                            gameSettings.mode ==
-                            GameMode.PLAYER_VS_PLAYER &&
-                            !controller.hasDrawOffer(),
-                    onClick = {
-                        if (controller.offerDraw()) {
-                            message = "Draw offered. The opponent can accept."
-                            refreshStatus()
-                        } else {
-                            message = "A draw cannot be offered right now."
-                        }
-                    }
-                )
-
-                PremiumButton(
-                    label = "ACCEPT DRAW",
-                    modifier = Modifier.weight(1f),
-                    enabled = !loading &&
-                            !isAnimating &&
-                            !aiThinking &&
-                            controller.canAcceptDraw(),
-                    onClick = { showDrawConfirmation = true }
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-
-                PremiumButton(
-                    label = "✦ HINT",
-                    modifier = Modifier.weight(1f),
-                    enabled = !loading &&
-                            !isAnimating &&
-                            !aiThinking &&
-                            !controller.isGameOver() &&
-                            isUserTurn(),
-                    onClick = {
-
-                        val moves = if (selectedSquare != null) {
-                            controller.getLegalMovesFrom(
-                                selectedSquare!!
-                            )
-                        } else {
-                            controller.getLegalMoves()
-                        }
-
-                        val hintMove = moves.firstOrNull()
-
-                        if (hintMove != null) {
-
-                            clearHighlights()
-
-                            selectedSquare = hintMove.from
-
-                            legalTargets =
-                                controller.getLegalMovesFrom(
-                                    hintMove.from
-                                ).map { it.to }.toSet()
-
-                            addHighlight(
-                                hintMove.from,
-                                SelectedHighlight
-                            )
-
-                            addHighlight(
-                                hintMove.to,
-                                CheckHighlight
-                            )
-
-                            message = "Suggested move: " +
-                                    "${hintMove.from.name} → " +
-                                    "${hintMove.to.name}. " +
-                                    "Tap the highlighted destination to play it."
-
-                        } else {
-                            message = "No legal moves are available."
-                        }
-                    }
-                )
-
-                PremiumButton(
-                    label = "RESIGN",
-                    modifier = Modifier.weight(1f),
-                    enabled = !loading &&
-                            !isAnimating &&
-                            !aiThinking &&
-                            !controller.isGameOver(),
-                    danger = true,
-                    onClick = { showResignConfirmation = true }
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = { showRestartConfirmation = true },
-                enabled = !loading && !isAnimating && !aiThinking,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(46.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Gold,
-                    contentColor = AppBackground
-                )
+                    .padding(
+                        start = 18.dp,
+                        end = 18.dp,
+                        top = 30.dp,
+                        bottom = 8.dp
+                    )
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            modifier = Modifier
+                                .padding(top = 15.dp),
+                            text = "CHESSMASTER",
+                            color = Gold,
+                            fontSize = if (compactLayout) 21.sp else 25.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp
+                        )
 
-                Text(
-                    text = "↻  RESTART GAME",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 13.sp,
-                    letterSpacing = 1.sp
-                )
+                        Text(
+                            text = "THE 3D CHESS EXPERIENCE",
+                            color = Muted,
+                            fontSize = 9.sp,
+                            letterSpacing = 1.8.sp
+                        )
+                    }
+
+                    Surface(
+                        color = ButtonSurface,
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, ButtonBorder)
+                    ) {
+                        Text(
+                            text = when {
+                                loading -> "LOADING"
+                                aiThinking -> "AI THINKING"
+                                isAnimating -> "ANIMATING"
+                                controller.isGameOver() -> "FINISHED"
+                                else -> "● LIVE MATCH"
+                            },
+                            color = when {
+                                aiThinking -> Gold
+                                loading || isAnimating -> Muted
+                                controller.isGameOver() -> ErrorRed
+                                else -> Green
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(
+                                horizontal = 10.dp,
+                                vertical = 7.dp
+                            )
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Panel,
+                            RoundedCornerShape(14.dp)
+                        )
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (
+                                gameSettings.mode ==
+                                GameMode.PLAYER_VS_COMPUTER
+                            ) {
+                                "PLAYER VS COMPUTER"
+                            } else {
+                                "PLAYER VS PLAYER"
+                            },
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            text = if (
+                                gameSettings.mode ==
+                                GameMode.PLAYER_VS_COMPUTER
+                            ) {
+                                "${gameSettings.playerColor.title}  ·  " +
+                                        gameSettings.difficulty.title
+                            } else {
+                                "Local multiplayer"
+                            },
+                            color = Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "CURRENT TURN",
+                            color = Muted,
+                            fontSize = 8.sp,
+                            letterSpacing = 1.sp
+                        )
+
+                        Text(
+                            text = gameStatus,
+                            color = when {
+                                gameStatus.contains(
+                                    "CHECKMATE",
+                                    ignoreCase = true
+                                ) -> ErrorRed
+
+                                gameStatus.contains(
+                                    "CHECK",
+                                    ignoreCase = true
+                                ) -> ErrorRed
+
+                                else -> Gold
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
 
-            Spacer(Modifier.height(6.dp))
+            // 3D BOARD
 
-            TextButton(
-                onClick = {
-                    showGameSetup = true
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isAnimating && !aiThinking
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "CHANGE MATCH SETTINGS",
-                    color = Muted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
+                Scene(
+                    modifier = Modifier.fillMaxSize(),
+                    engine = engine,
+                    modelLoader = modelLoader,
+                    materialLoader = materialLoader,
+                    childNodes = nodes,
+                    cameraManipulator = cameraManipulator,
+                    onGestureListener = rememberOnGestureListener(
+                        onSingleTapConfirmed = { _, node ->
+                            latestNodeTap(node)
+                        }
+                    )
                 )
+
+                if (loading) {
+                    Surface(
+                        color = Panel,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, ButtonBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(top = 25.dp)
+                                .padding(
+                                horizontal = 22.dp,
+                                vertical = 16.dp
+                            ),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "PREPARING CHESSBOARD",
+                                color = Gold,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(Modifier.height(5.dp))
+
+                            Text(
+                                text = "Loading 3D pieces...",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
             }
 
-            if (loadError.isNotBlank()) {
+
+// MATCH CONTROL PANEL
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 350.dp)
+                    .wrapContentHeight(Alignment.Top)
+                    .verticalScroll(rememberScrollState())
+                    .background(
+                        Panel,
+                        RoundedCornerShape(
+                            topStart = 22.dp,
+                            topEnd = 22.dp
+                        )
+                    )
+                    .padding(
+                        horizontal = 22.dp,
+                        vertical = if (compactLayout) 150.dp else 160.dp
+                    ),
+                verticalArrangement = Arrangement.Top
+            ) {
+
+
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "MATCH CONTROL",
+                        color = Gold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.3.sp
+                    )
+
+                    Text(
+                        text = if (controller.isGameOver()) {
+                            "GAME OVER"
+                        } else {
+                            "MOVE $moveCount"
+                        },
+                        color = Muted,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.height(7.dp))
 
                 Text(
-                    text = loadError,
-                    color = ErrorRed,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp
+                    text = message,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
+
+                Spacer(Modifier.height(9.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            AppBackground,
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    StatusCounter(
+                        label = "WHITE PIECES",
+                        value = "$whiteLoaded / 16",
+                        valueColor = Color.White
+                    )
+
+                    StatusCounter(
+                        label = "BLACK PIECES",
+                        value = "$blackLoaded / 16",
+                        valueColor = Gold
+                    )
+
+                    StatusCounter(
+                        label = "TOTAL MOVES",
+                        value = moveCount.toString(),
+                        valueColor = Green
+                    )
+                }
+
+                Spacer(Modifier.height(9.dp))
+
+                // ========================================================
+                // MATCH CONTROLS
+                // ========================================================
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    PremiumButton(
+                        label = "UNDO",
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading &&
+                                !isAnimating &&
+                                !aiThinking &&
+                                controller.canUndo()
+                    ) {
+                        undoLastMove()
+                    }
+
+                    PremiumButton(
+                        label = "REDO",
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading &&
+                                !isAnimating &&
+                                !aiThinking &&
+                                controller.canRedo()
+                    ) {
+                        redoLastMove()
+                    }
+
+                    PremiumButton(
+                        label = "HISTORY",
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading
+                    ) {
+                        showHistory = true
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    PremiumButton(
+                        label = "HINT",
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading &&
+                                !isAnimating &&
+                                !aiThinking &&
+                                !controller.isGameOver()
+                    ) {
+                        val currentTurn = controller.getTurn()
+
+                        if (!isUserTurn()) {
+                            message = "Wait for ChessMaster to finish its move."
+                        } else {
+                            val legalMoves = controller.getLegalMoves()
+
+                            if (legalMoves.isEmpty()) {
+                                message = "No legal moves are available."
+                            } else {
+                                val hintMove = legalMoves.random()
+
+                                val from = hintMove.from
+                                val to = hintMove.to
+
+                                message = "Hint: move from ${from.name} to ${to.name}."
+
+                                selectedSquare = from
+
+                                legalTargets = controller.getLegalMovesFrom(from)
+                                    .map { it.to }
+                                    .toSet()
+
+                                clearHighlights()
+                                addHighlight(from, SelectedHighlight)
+
+                                legalTargets.forEach { target ->
+                                    addHighlight(target, MoveHighlight)
+                                }
+                            }
+                        }
+                    }
+
+                    PremiumButton(
+                        label = "OFFER DRAW",
+                        modifier = Modifier.weight(1.2f),
+                        enabled = !loading &&
+                                !isAnimating &&
+                                !aiThinking &&
+                                !controller.isGameOver() &&
+                                gameSettings.mode == GameMode.PLAYER_VS_PLAYER
+                    ) {
+                        if (controller.offerDraw()) {
+                            message = "Draw offered. Your opponent can accept it."
+                        } else {
+                            message = "Unable to offer a draw right now."
+                        }
+                    }
+
+                    PremiumButton(
+                        label = "ACCEPT DRAW",
+                        modifier = Modifier.weight(1.2f),
+                        enabled = !loading &&
+                                !isAnimating &&
+                                !aiThinking &&
+                                controller.canAcceptDraw()
+                    ) {
+                        showDrawConfirmation = true
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    PremiumButton(
+                        label = "RESIGN",
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading &&
+                                !isAnimating &&
+                                !aiThinking &&
+                                !controller.isGameOver(),
+                        danger = true
+                    ) {
+                        showResignConfirmation = true
+                    }
+
+                    PremiumButton(
+                        label = "RESTART",
+                        modifier = Modifier.weight(1f),
+                        enabled = !loading && !isAnimating
+                    ) {
+                        showRestartConfirmation = true
+                    }
+
+                    PremiumButton(
+                        label = "NEW SETTINGS",
+                        modifier = Modifier.weight(1.3f),
+                        enabled = !loading && !isAnimating
+                    ) {
+                        selectedGameMode = gameSettings.mode
+                        selectedPlayerColor = gameSettings.playerColor
+                        selectedDifficulty = gameSettings.difficulty
+                        showGameSetup = true
+                    }
+                }
             }
         }
     }
 
     // ========================================================
-    // GAME SETUP DIALOG
+    // MATCH SETUP DIALOG
     // ========================================================
 
     if (showGameSetup) {
-
         AlertDialog(
             onDismissRequest = {
-                // Keep setup open until the player starts a match.
+                // Setup stays open until the player starts a match.
             },
             containerColor = Panel,
             titleContentColor = Gold,
             textContentColor = Color.White,
             title = {
                 Column {
-
                     Text(
                         text = "CHESSMASTER",
                         fontSize = 23.sp,
@@ -1723,14 +1799,12 @@ private fun Chess3DScreen() {
                 }
             },
             text = {
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 440.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
-
                     Text(
                         text = "GAME MODE",
                         color = Gold,
@@ -1741,7 +1815,6 @@ private fun Chess3DScreen() {
                     Spacer(Modifier.height(8.dp))
 
                     GameMode.values().forEach { mode ->
-
                         SetupChoice(
                             title = mode.title,
                             description = mode.description,
@@ -1756,7 +1829,6 @@ private fun Chess3DScreen() {
                         selectedGameMode ==
                         GameMode.PLAYER_VS_COMPUTER
                     ) {
-
                         Spacer(Modifier.height(16.dp))
 
                         Text(
@@ -1769,7 +1841,6 @@ private fun Chess3DScreen() {
                         Spacer(Modifier.height(8.dp))
 
                         PlayerColor.values().forEach { color ->
-
                             SetupChoice(
                                 title = color.title,
                                 description = color.description,
@@ -1792,7 +1863,6 @@ private fun Chess3DScreen() {
                         Spacer(Modifier.height(8.dp))
 
                         AIDifficulty.values().forEach { difficulty ->
-
                             SetupChoice(
                                 title = difficulty.title,
                                 description = difficulty.description,
@@ -1806,10 +1876,8 @@ private fun Chess3DScreen() {
                 }
             },
             confirmButton = {
-
                 Button(
                     onClick = {
-
                         aiJob?.cancel()
                         aiThinking = false
 
@@ -1820,7 +1888,6 @@ private fun Chess3DScreen() {
                         )
 
                         showGameSetup = false
-
                         restartGame()
                     },
                     enabled = !loading && !isAnimating,
@@ -1836,13 +1903,12 @@ private fun Chess3DScreen() {
                 }
             },
             dismissButton = {
-
                 if (!loading) {
-
                     TextButton(
                         onClick = {
-                            selectedGameMode =
-                                GameMode.PLAYER_VS_PLAYER
+                            selectedGameMode = GameMode.PLAYER_VS_PLAYER
+                            selectedPlayerColor = PlayerColor.WHITE
+                            selectedDifficulty = AIDifficulty.MEDIUM
 
                             gameSettings = GameSettings(
                                 mode = GameMode.PLAYER_VS_PLAYER,
@@ -1854,10 +1920,7 @@ private fun Chess3DScreen() {
                             restartGame()
                         }
                     ) {
-                        Text(
-                            text = "QUICK START",
-                            color = Muted
-                        )
+                        Text("QUICK START", color = Muted)
                     }
                 }
             }
@@ -1869,52 +1932,88 @@ private fun Chess3DScreen() {
     // ========================================================
 
     if (showHistory) {
-
         AlertDialog(
-            onDismissRequest = { showHistory = false },
+            onDismissRequest = {
+                showHistory = false
+            },
             containerColor = Panel,
             titleContentColor = Gold,
             textContentColor = Color.White,
             title = {
-                Text(
-                    text = "MOVE HISTORY",
-                    fontWeight = FontWeight.ExtraBold
-                )
+                Column {
+                    Text(
+                        text = "MOVE HISTORY",
+                        fontWeight = FontWeight.ExtraBold
+                    )
+
+                    Text(
+                        text = "$moveCount half-moves played",
+                        color = Muted,
+                        fontSize = 11.sp
+                    )
+                }
             },
             text = {
+                key(historyRevision) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        val history = controller.getMoveHistory()
 
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-
-                    val history = controller.getMoveHistory()
-
-                    if (history.isEmpty()) {
-
-                        Text(
-                            text = "No moves have been played yet.",
-                            color = Muted
-                        )
-
-                    } else {
-
-                        history.forEach { move ->
-
+                        if (history.isEmpty()) {
                             Text(
-                                text = move.display(),
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(vertical = 4.dp)
+                                text = "Your match history will appear here.",
+                                color = Muted
                             )
+                        } else {
+                            history.forEachIndexed { index, move ->
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp),
+                                    color = if (index % 2 == 0) {
+                                        ButtonSurface
+                                    } else {
+                                        Panel
+                                    },
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(
+                                            horizontal = 10.dp,
+                                            vertical = 8.dp
+                                        ),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${index + 1}.",
+                                            color = Gold,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Spacer(Modifier.width(10.dp))
+
+                                        Text(
+                                            text = move.display(),
+                                            color = Color.White,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             },
             confirmButton = {
                 TextButton(
-                    onClick = { showHistory = false }
+                    onClick = {
+                        showHistory = false
+                    }
                 ) {
                     Text("CLOSE", color = Gold)
                 }
@@ -1923,11 +2022,10 @@ private fun Chess3DScreen() {
     }
 
     // ========================================================
-    // RESIGN
+    // RESIGN CONFIRMATION
     // ========================================================
 
     if (showResignConfirmation) {
-
         AlertDialog(
             onDismissRequest = {
                 showResignConfirmation = false
@@ -1949,31 +2047,21 @@ private fun Chess3DScreen() {
             confirmButton = {
                 TextButton(
                     onClick = {
-
                         showResignConfirmation = false
 
                         if (controller.resign()) {
-
                             val result = controller.getResult()
 
                             gameStatus = result.title
+                            message = "${result.description}\n" +
+                                    "Final Score: ${result.score}"
 
-                            message =
-                                "${result.description}\n" +
-                                        "Final Score: ${result.score}"
-
-                            selectedSquare = null
-                            legalTargets = emptySet()
-
-                            clearHighlights()
+                            clearSelection()
                             refreshStatus()
                         }
                     }
                 ) {
-                    Text(
-                        text = "RESIGN",
-                        color = ErrorRed
-                    )
+                    Text("RESIGN", color = ErrorRed)
                 }
             },
             dismissButton = {
@@ -1989,11 +2077,10 @@ private fun Chess3DScreen() {
     }
 
     // ========================================================
-    // ACCEPT DRAW
+    // ACCEPT DRAW CONFIRMATION
     // ========================================================
 
     if (showDrawConfirmation) {
-
         AlertDialog(
             onDismissRequest = {
                 showDrawConfirmation = false
@@ -2015,31 +2102,23 @@ private fun Chess3DScreen() {
             confirmButton = {
                 TextButton(
                     onClick = {
-
                         showDrawConfirmation = false
 
                         if (controller.acceptDraw()) {
-
                             val result = controller.getResult()
 
                             gameStatus = result.title
+                            message = "${result.description}\n" +
+                                    "Final Score: ${result.score}"
 
-                            message =
-                                "${result.description}\n" +
-                                        "Final Score: ${result.score}"
-
-                            selectedSquare = null
-                            legalTargets = emptySet()
-
-                            clearHighlights()
+                            clearSelection()
                             refreshStatus()
+                        } else {
+                            message = "The draw offer is no longer available."
                         }
                     }
                 ) {
-                    Text(
-                        text = "ACCEPT DRAW",
-                        color = Gold
-                    )
+                    Text("ACCEPT DRAW", color = Gold)
                 }
             },
             dismissButton = {
@@ -2059,7 +2138,6 @@ private fun Chess3DScreen() {
     // ========================================================
 
     if (showRestartConfirmation) {
-
         AlertDialog(
             onDismissRequest = {
                 showRestartConfirmation = false
@@ -2074,7 +2152,7 @@ private fun Chess3DScreen() {
             },
             text = {
                 Text(
-                    text = "The current game will be cleared.",
+                    text = "The current match and its move history will be cleared.",
                     color = Color.White
                 )
             },
@@ -2085,10 +2163,7 @@ private fun Chess3DScreen() {
                         restartGame()
                     }
                 ) {
-                    Text(
-                        text = "RESTART",
-                        color = Gold
-                    )
+                    Text("RESTART", color = Gold)
                 }
             },
             dismissButton = {
@@ -2115,33 +2190,26 @@ private fun SetupChoice(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-
     Surface(
         modifier = Modifier
+            .verticalScroll(rememberScrollState())
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clickable(onClick = onClick),
-        color = if (selected) {
-            Color(0xFF303C40)
-        } else {
-            ButtonSurface
-        },
+        color = if (selected) Color(0xFF303C40) else ButtonSurface,
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(
             width = 1.dp,
             color = if (selected) Gold else ButtonBorder
         )
     ) {
-
         Row(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-
                 Text(
                     text = title,
                     color = if (selected) Gold else Color.White,
@@ -2160,7 +2228,6 @@ private fun SetupChoice(
             }
 
             if (selected) {
-
                 Text(
                     text = "✓",
                     color = Gold,
@@ -2184,49 +2251,39 @@ private fun PremiumButton(
     danger: Boolean = false,
     onClick: () -> Unit
 ) {
-
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(44.dp),
-        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.height(42.dp),
+        shape = RoundedCornerShape(11.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (danger) {
                 Color(0xFF512C32)
             } else {
                 ButtonSurface
             },
-            contentColor = if (danger) {
-                ErrorRed
-            } else {
-                Color.White
-            },
+            contentColor = if (danger) ErrorRed else Color.White,
             disabledContainerColor = Color(0xFF1B252E),
             disabledContentColor = Color(0xFF65727D)
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (danger) {
-                Color(0xFF754047)
-            } else {
-                ButtonBorder
-            }
+            color = if (danger) Color(0xFF754047) else ButtonBorder
         ),
         elevation = ButtonDefaults.buttonElevation(
             defaultElevation = 1.dp,
             pressedElevation = 0.dp
         ),
         contentPadding = PaddingValues(
-            horizontal = 6.dp,
+            horizontal = 4.dp,
             vertical = 4.dp
         )
     ) {
-
         Text(
             text = label,
-            fontSize = 10.sp,
+            fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 0.2.sp,
+            letterSpacing = 0.1.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -2243,25 +2300,24 @@ private fun StatusCounter(
     value: String,
     valueColor: Color
 ) {
-
     Column(
         horizontalAlignment = Alignment.Start
     ) {
-
         Text(
             text = label,
             color = Muted,
-            fontSize = 9.sp,
-            letterSpacing = 0.5.sp
+            fontSize = 8.sp,
+            letterSpacing = 0.3.sp
         )
 
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(4.dp))
 
         Text(
             text = value,
             color = valueColor,
-            fontSize = 15.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold
         )
     }
 }
+
