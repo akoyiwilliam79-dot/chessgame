@@ -1,3 +1,4 @@
+
 package com.example.chessmaster
 
 import com.github.bhlangonijr.chesslib.Board
@@ -5,153 +6,330 @@ import com.github.bhlangonijr.chesslib.Side
 import com.github.bhlangonijr.chesslib.Square
 import com.github.bhlangonijr.chesslib.move.Move
 
-/**
+enum class MatchOutcome {
+    IN_PROGRESS,
+    WHITE_WINS,
+    BLACK_WINS,
+    DRAW
+}
 
- * Stage 4: chess rules controller.
- *
- * Chesslib handles legal moves and the rules of chess.
- * The 3D activity will use this controller to select pieces,
- * display legal destinations, and play moves.
- */
+data class MatchResult(
+    val outcome: MatchOutcome,
+    val title: String,
+    val score: String,
+    val description: String
+)
+
+data class RecordedMove(
+    val number: Int,
+    val player: String,
+    val from: String,
+    val to: String
+) {
+    fun display(): String = "$number. $player: $from → $to"
+}
+
 class ChessGameController {
 
     private val board = Board()
+    private val positions = mutableListOf<String>()
+    private val moveHistory = mutableListOf<RecordedMove>()
 
-    /**
+    private var resignedBy: Side? = null
+    private var agreedDraw = false
+    private var drawOfferedBy: Side? = null
 
-     * Returns the current position in FEN format.
-     */
+    init {
+        positions.add(board.fen)
+    }
+
     fun getFen(): String = board.fen
 
-    /**
-
-     * Returns whose turn it is.
-     */
     fun getTurn(): String =
         if (board.sideToMove == Side.WHITE) "White" else "Black"
 
-    /**
+    fun getSideToMove(): Side = board.sideToMove
 
-     * Returns all legal moves available in the current position.
-     */
     fun getLegalMoves(): List<Move> =
-        board.legalMoves().toList()
+        if (isGameOver()) emptyList()
+        else board.legalMoves().toList()
 
-    /**
-
-     * Returns legal moves from a selected square.
-     */
     fun getLegalMovesFrom(square: Square): List<Move> =
         getLegalMoves().filter { it.from == square }
 
-    /**
-
-     * Checks whether a move is legal.
-     */
     fun isLegalMove(from: Square, to: Square): Boolean =
-        getLegalMoves().any {
+        getLegalMoves().any { it.from == from && it.to == to }
+
+    fun findLegalMove(from: Square, to: Square): Move? =
+        getLegalMoves().firstOrNull {
             it.from == from && it.to == to
         }
 
     /**
-
-     * Plays a legal move.
+     * Plays a move selected by its source and destination.
      *
-     * Returns true if the move was played successfully.
-     * Promotion is handled separately in a later stage.
+     * Used by normal board interaction.
      */
     fun playMove(from: Square, to: Square): Boolean {
-        val move = getLegalMoves().firstOrNull {
-            it.from == from && it.to == to
+        val move = findLegalMove(from, to) ?: return false
+        return playMove(move)
+    }
+
+    /**
+     * Plays the exact legal move selected by the AI.
+     *
+     * Important for promotion moves because multiple legal moves
+     * can share the same source and destination squares.
+     */
+    fun playMove(move: Move): Boolean {
+        if (isGameOver()) return false
+
+        val legalMove = getLegalMoves().firstOrNull {
+            it.from == move.from &&
+                    it.to == move.to &&
+                    it.promotion == move.promotion
         } ?: return false
 
-        board.doMove(move)
+        val previousFen = board.fen
+        val movingSide = board.sideToMove
+        val moveNumber = moveHistory.size / 2 + 1
+
+        if (!board.doMove(legalMove)) return false
+
+        positions.add(previousFen)
+
+        moveHistory.add(
+            RecordedMove(
+                number = moveNumber,
+                player = if (movingSide == Side.WHITE) "White" else "Black",
+                from = legalMove.from.name,
+                to = legalMove.to.name
+            )
+        )
+
+        drawOfferedBy = null
+
         return true
     }
 
-    /**
+    fun canUndo(): Boolean =
+        positions.size > 1 &&
+                resignedBy == null &&
+                !agreedDraw
 
-     * Detects checkmate.
-     */
+    fun undoMove(): Boolean {
+        if (!canUndo()) return false
+
+        val previousFen = positions.removeAt(positions.lastIndex)
+
+        board.loadFromFen(previousFen)
+
+        if (moveHistory.isNotEmpty()) {
+            moveHistory.removeAt(moveHistory.lastIndex)
+        }
+
+        drawOfferedBy = null
+
+        return true
+    }
+
+    fun getMoveHistory(): List<RecordedMove> =
+        moveHistory.toList()
+
+    fun getMoveCount(): Int = moveHistory.size
+
+    fun offerDraw(): Boolean {
+        if (isGameOver() || drawOfferedBy != null) return false
+
+        drawOfferedBy = board.sideToMove
+        return true
+    }
+
+    fun hasDrawOffer(): Boolean = drawOfferedBy != null
+
+    fun getDrawOfferFrom(): String? =
+        when (drawOfferedBy) {
+            Side.WHITE -> "White"
+            Side.BLACK -> "Black"
+            null -> null
+        }
+
+    fun canAcceptDraw(): Boolean =
+        !isGameOver() &&
+                drawOfferedBy != null &&
+                drawOfferedBy != board.sideToMove
+
+    fun acceptDraw(): Boolean {
+        if (isGameOver() || drawOfferedBy == null) return false
+
+        agreedDraw = true
+        drawOfferedBy = null
+
+        return true
+    }
+
+    fun declineDraw(): Boolean {
+        if (drawOfferedBy == null) return false
+
+        drawOfferedBy = null
+        return true
+    }
+
+    fun resign(): Boolean {
+        if (isGameOver()) return false
+
+        resignedBy = board.sideToMove
+        drawOfferedBy = null
+
+        return true
+    }
+
     fun isCheckmate(): Boolean = board.isMated()
 
-    /**
-
-     * Detects stalemate.
-     */
     fun isStalemate(): Boolean = board.isStaleMate()
 
-    /**
-
-     * Detects whether the side to move is in check.
-     */
     fun isInCheck(): Boolean = board.isKingAttacked()
 
-    /**
+    private fun isInsufficientMaterial(): Boolean {
+        val placement = board.fen.substringBefore(" ")
+        val pieces = placement.filter { it.isLetter() }
 
-     * Returns a status suitable for the game interface.
-     */
-    fun getStatus(): String {
+        if (pieces.all { it == 'K' || it == 'k' }) {
+            return true
+        }
+
+        if (
+            pieces.length == 3 &&
+            pieces.count { it == 'K' || it == 'k' } == 2 &&
+            pieces.any {
+                it == 'B' || it == 'b' ||
+                        it == 'N' || it == 'n'
+            }
+        ) {
+            return true
+        }
+
+        return false
+    }
+
+    fun isGameOver(): Boolean =
+        board.isMated() ||
+                board.isStaleMate() ||
+                isInsufficientMaterial() ||
+                resignedBy != null ||
+                agreedDraw
+
+    fun getResult(): MatchResult {
         return when {
-            isCheckmate() -> "CHECKMATE"
-            isStalemate() -> "STALEMATE"
-            isInCheck() -> "${getTurn().uppercase()} IN CHECK"
-            else -> "${getTurn().uppercase()} TO MOVE"
+            resignedBy != null -> {
+                val winner =
+                    if (resignedBy == Side.WHITE) "BLACK" else "WHITE"
+
+                MatchResult(
+                    outcome = if (winner == "WHITE") {
+                        MatchOutcome.WHITE_WINS
+                    } else {
+                        MatchOutcome.BLACK_WINS
+                    },
+                    title = "$winner WINS!",
+                    score = if (winner == "WHITE") "1 - 0" else "0 - 1",
+                    description = "$winner wins by resignation."
+                )
+            }
+
+            agreedDraw -> MatchResult(
+                outcome = MatchOutcome.DRAW,
+                title = "DRAW!",
+                score = "½ - ½",
+                description = "Both players agreed to a draw."
+            )
+
+            board.isMated() -> {
+                val winner =
+                    if (board.sideToMove == Side.WHITE) "BLACK" else "WHITE"
+
+                MatchResult(
+                    outcome = if (winner == "WHITE") {
+                        MatchOutcome.WHITE_WINS
+                    } else {
+                        MatchOutcome.BLACK_WINS
+                    },
+                    title = "$winner WINS!",
+                    score = if (winner == "WHITE") "1 - 0" else "0 - 1",
+                    description = "CHECKMATE! $winner has won the match."
+                )
+            }
+
+            board.isStaleMate() || isInsufficientMaterial() ->
+                MatchResult(
+                    outcome = MatchOutcome.DRAW,
+                    title = "DRAW!",
+                    score = "½ - ½",
+                    description = if (isInsufficientMaterial()) {
+                        "Draw by insufficient material."
+                    } else {
+                        "Draw by stalemate."
+                    }
+                )
+
+            else -> MatchResult(
+                outcome = MatchOutcome.IN_PROGRESS,
+                title = getStatus(),
+                score = "0 - 0",
+                description = "${getTurn()} to move."
+            )
         }
     }
 
-    /**
+    fun getStatus(): String =
+        when {
+            resignedBy != null -> "RESIGNATION"
+            agreedDraw -> "DRAW AGREED"
+            isCheckmate() -> "CHECKMATE"
+            isStalemate() -> "STALEMATE"
+            isInsufficientMaterial() -> "DRAW"
+            isInCheck() -> "${getTurn().uppercase()} IN CHECK"
+            else -> "${getTurn().uppercase()} TO MOVE"
+        }
 
-     * Restarts the game from the standard starting position.
-     */
     fun restart() {
-        board.loadFromFen(
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-        )
+        board.loadFromFen(STARTING_FEN)
+
+        positions.clear()
+        positions.add(board.fen)
+
+        moveHistory.clear()
+
+        resignedBy = null
+        agreedDraw = false
+        drawOfferedBy = null
     }
 
+    fun newGame() = restart()
 
-    /**
-
-     * Converts a 3D board coordinate into a chess square.
-     *
-     * file: 0 = a, 1 = b ... 7 = h
-     * rank: 0 = rank 1 ... 7 = rank 8
-     */
     fun squareAt(file: Int, rank: Int): Square {
-        require(file in 0..7) { "File must be between 0 and 7." }
-        require(rank in 0..7) { "Rank must be between 0 and 7." }
+        require(file in 0..7) {
+            "File must be between 0 and 7."
+        }
+
+        require(rank in 0..7) {
+            "Rank must be between 0 and 7."
+        }
 
         val fileLetter = ('A'.code + file).toChar()
+
         return Square.valueOf("$fileLetter${rank + 1}")
     }
 
-    /**
-
-     * Returns the file coordinate of a chess square.
-     */
     fun fileOf(square: Square): Int =
         square.name[0] - 'A'
 
-    /**
-
-     * Returns the rank coordinate of a chess square.
-     */
     fun rankOf(square: Square): Int =
         square.name[1].digitToInt() - 1
 
-    /**
-
-     * Whether the game has ended.
-     */
-    fun isGameOver(): Boolean =
-        isCheckmate() || isStalemate()
-
-    /**
-
-     * Starts a new game.
-     */
-    fun newGame() {
-        restart()
+    companion object {
+        private const val STARTING_FEN =
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
     }
 }
+
